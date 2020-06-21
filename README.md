@@ -8,6 +8,12 @@ Simple script to convert MySQL tables to Oracle tables including:
  
 all auto generated in just one command only. ;)
 
+## Setup
+  
+  - Configure database connection on `database.php.example` file.
+  - Then rename `database.php.example` to `database.php`.
+  - Execute. ;)
+
 ## Execute command like this:
 ```
 
