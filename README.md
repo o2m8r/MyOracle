@@ -14,3 +14,7 @@ all auto generated in just one command only. ;)
   php myoracle.php --old_table="<mysql_table_name>" --new_table="<oracle_table_name>" --primary_key="<mysql_table_primary_key>"
 
 ```
+
+## Sample Output
+
+![alt text](https://i.imgur.com/c9DONht.png "Output")
