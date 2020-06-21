@@ -1,0 +1,13 @@
+<?php
+
+  /***
+    Update database config values and rename this file to: database.php
+  ***/
+
+  // database config
+  define('DB_HOSTNAME', '<your_database_hostname>');
+  define('DB_USERNAME', '<your_database_username>');
+  define('DB_PASSWORD', '<your_database_password>');
+  define('DB_DATABASE', '<your_database_name>');
+
+?>
