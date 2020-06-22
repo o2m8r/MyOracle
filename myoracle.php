@@ -3,6 +3,7 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 date_default_timezone_set('Asia/Manila');
+ini_set('memory_limit', '-1');
 
 $arguments = getopt("", array("old_table:", "new_table:", "primary_key:"));
 $hint = "Execute command like this:\n\n";
@@ -64,6 +65,7 @@ $select_columns = "";
 $procedure_params = "";
 $procedure_param_type = "";
 $procedure_vars = "";
+$last_primary_key_id = 0;
 
 // Create connection
 $conn = new mysqli(DB_HOSTNAME, DB_USERNAME, DB_PASSWORD, DB_DATABASE);
@@ -74,7 +76,14 @@ if ($conn->connect_error) {
   echo "Successfully connected to ".DB_DATABASE." @ ".DB_HOSTNAME."\n";
 }
 
-# create directory
+// progress bar
+function progress_bar($done, $total, $info="", $width=50) {
+  $perc = round(($done * 100) / $total);
+  $bar = round(($width * $perc) / 100);
+  return sprintf("%s%%[%s>%s]%s\r", $perc, str_repeat("=", $bar), str_repeat(" ", $width-$bar), $info);
+}
+
+// create directory
 if(!file_exists($old_table_name)){
   mkdir($old_table_name);
 }
@@ -187,18 +196,23 @@ $mysql_select .= "\tFROM {$old_table_name};";
 file_put_contents("./{$old_table_name}/{$old_table_name}_select.sql", $mysql_select);
 echo "\nDone Generating: {$old_table_name}_select.sql";
 
+echo "\nFetching table data...";
 // generate csv file for data
 $data = $conn->query($mysql_select);
 $rows = $data->fetch_all(MYSQLI_ASSOC);
-
+$total_records = mysqli_num_rows($data);
 $data_csv = fopen("./{$old_table_name}/{$old_table_name}.csv","w");
 
 $header_csv = "";
 fputcsv($data_csv, $column_name_array);
-foreach ($rows as $row) {
+foreach ($rows as $index => $row) {
   $output = Array();
-  foreach($row as $value){
+  foreach($row as $key => $value){
+    if($key == $primary_key){
+      $last_primary_key_id = $value + 1;
+    }
     array_push($output, str_replace(array("\r","\n"),"", trim(preg_replace('/\s+/', ' ', $value))));
+    echo progress_bar(($index + 1), $total_records);
   }
   fputcsv($data_csv, $output);
 }
@@ -250,98 +264,6 @@ $stored_procedure_query = "CREATE OR REPLACE PROCEDURE {$new_table_name}_DELETE_
                           END;";
 file_put_contents("./{$old_table_name}/{$new_table_name}_DELETE_procedure.sql", $stored_procedure_query);
 echo "\nDone Generating: {$new_table_name}_DELETE_procedure.sql";
-
-// build data query 
-$select_sql = "SELECT {$select_columns} FROM {$old_table_name}";
-$data = $conn->query($select_sql);
-
-$insert_query = "";
-$values = "";
-$index = 0;
-$last_primary_key_id = 0;
-
-foreach($data->fetch_all(MYSQLI_ASSOC) as $row){
-  $values = "";
-  foreach($row as $key => $column_value){
-    if($key == $primary_key){
-      $last_primary_key_id = $column_value + 1; 
-    }
-    $index += 1;
-    $separator = count($column_type_array) == $index ? "" : ",";
-    $column_value = empty($column_value) ? "NULL" : "'".str_replace("'", "''", trim($column_value))."'";
-    // CHECK IF DATE OR DATETIME
-    if(typeChecker($column_type_array[($index-1)], ['timestamp']) && $column_value != "NULL"){
-      $column_value = str_replace("'", "", $column_value);
-      if($column_value == "0000-00-00 00:00:00"){
-        $column_value = "NULL";
-      } else {
-        $column_value = "TO_TIMESTAMP('".date("d-M-Y H:i:s", strtotime($column_value))."', 'DD-Mon-RR HH24:MI:SS.FF')";
-      }
-    }
-    if(typeChecker($column_type_array[($index-1)], ['date']) && $column_value != "NULL"){
-      $column_value = str_replace("'", "", $column_value);
-      if($column_value == "0000-00-00"){
-        $column_value = "NULL";
-      } else {
-        $column_value = "'".date("m/d/Y", strtotime($column_value))."'";
-      }
-    }
-    $values .= "{$column_value}{$separator}";
-  }
-  $insert_query .= "EXECUTE {$new_table_name}_INSERT_PRC({$values});\n";
-  $index = 0;
-}
-
-// output data file
-try {
-  // REMOVED
-  // file_put_contents("./{$old_table_name}/{$new_table_name}_TBL_data.sql", "SET DEFINE OFF;\n\n".$insert_query) or "Error generating too many data.";
-  // echo "\nDone Generating: {$new_table_name}_TBL_data.sql";
-} catch(Exception $e) {
-  echo 'Error: ' .$e->getMessage();
-}
-
-
-/*
-# Multi Insert Query
-$select_sql = "SELECT {$select_columns} FROM {$old_table_name}";
-$data = $conn->query($select_sql);
-
-$insert_query = "";
-$into_query = " INTO {$old_table_name} ({$select_columns})";
-$values = "";
-$index = 0;
-$last_primary_key_id = 0;
-
-foreach($data->fetch_all(MYSQLI_ASSOC) as $row){
-  $values = "";
-  foreach($row as $key => $column_value){
-    if($key == $primary_key){
-      $last_primary_key_id = $column_value + 1; 
-    }
-    $index += 1;
-    $separator = count($column_type_array) == $index ? "" : ",";
-    $column_value = empty($column_value) ? "NULL" : "'".str_replace("'", "''", $column_value)."'";
-    // CHECK IF DATE OR DATETIME
-    if(typeChecker($column_type_array[($index-1)], ['timestamp']) && $column_value != "NULL"){
-      $column_value = str_replace("'", "", $column_value);
-      $column_value = "TO_TIMESTAMP('".date("d/M/Y H:i:s", strtotime($column_value))."', 'DD-Mon-RR HH24:MI:SS.FF')";
-    }
-    if(typeChecker($column_type_array[($index-1)], ['date']) && $column_value != "NULL"){
-      $column_value = str_replace("'", "", $column_value);
-      $column_value = "'".date("m/d/Y", strtotime($column_value))."'";
-    }
-    $values .= "{$column_value}{$separator}";
-  }
-  $insert_query .= "\tINTO {$new_table_name}_TBL({$select_columns}) VALUES ({$values}) \n";
-  $index = 0;
-}
-$insert_query = "SET DEFINE OFF;\n\nINSERT ALL \n{$insert_query}SELECT * FROM dual;";
-// output data file
-file_put_contents("./{$old_table_name}/{$new_table_name}_TBL_data.sql", $insert_query);
-echo "\nDone Generating: {$new_table_name}_TBL_data.sql";
-*/
-
 
 // generate ID using sequence and trigger
 $sequence = "CREATE SEQUENCE {$new_table_name}_SEQ START WITH {$last_primary_key_id} INCREMENT BY 1;\n\n";
