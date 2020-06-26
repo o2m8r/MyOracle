@@ -134,7 +134,7 @@ foreach($columns->fetch_all(MYSQLI_ASSOC) as $index => $row){
   } else if (typeChecker($type, ['text'])) {
     $type = "CLOB";
     $procedure_param_type = "CLOB";
-  } else if (typeChecker($type, ['datetime'])) {
+  } else if (typeChecker($type, ['datetime', 'timestamp'])) {
     $type = "TIMESTAMP";
     $procedure_param_type = "TIMESTAMP";
     $default = "NULL";
